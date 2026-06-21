@@ -1,179 +1,259 @@
 # TFM — Security Framework for MCP-based Multi-Agent Systems in SOC Environments
 
-Master's thesis implementation. University project — cybersecurity, agentic AI, SOC automation.
+Master's thesis implementation — Universidad Politécnica de Madrid, 2026.
+Cybersecurity · Agentic AI · SOC automation.
 
 ## Overview
 
-This repository contains the implementation of a security framework for multi-agent systems based on the Model Context Protocol (MCP) in Security Operations Center (SOC) environments.
+This repository contains the implementation of a security framework for
+multi-agent systems based on the Model Context Protocol (MCP) in Security
+Operations Center (SOC) environments.
 
-The system deploys three specialized LLM agents (triage, enrichment, response) connected to a Wazuh SIEM through MCP. A five-layer security middleware intercepts all agent-to-tool communication and enforces access control, rate limiting, input/output validation, and audit logging.
+The system deploys three specialized LLM agents (triage, enrichment,
+response) connected to a Wazuh SIEM through MCP. A five-layer security
+middleware, plus a connection-phase registration validator, intercepts all
+agent-to-tool communication and enforces tool registration checks, access
+control, rate limiting, input/output validation, and audit logging.
+
+A purpose-built malicious MCP server simulates the attack surface
+identified in the literature, allowing the framework to be evaluated
+against controlled, repeatable attack scenarios rather than only described
+on paper.
 
 ## Architecture
 
 ```
-labserver05 (host)
-├── wazuh-mcp    Docker container → port 8085   (16 tools, custom Rust build)
-├── evil-mcp     Docker container → port 8089   (attack simulation)
-└── SOC-framework  python main.py
-
-wazuh-server (Vagrant VM)
-└── Wazuh SIEM   docker-compose  → ports 443 / 55000 / 9200
+                         LLM (GPT-4o via OpenAI API)
+                                    │
+              ┌─────────────────────┼─────────────────────┐
+              │                  Agents                    │
+              │     Triage · Enrichment · Response          │
+              └─────────────────────┼─────────────────────┘
+                                    │
+   ┌────────────────────────────────▼─────────────────────────────────┐
+   │                  Security Framework (middleware)                  │
+   │                                                                    │
+   │   Connection phase   Tool registration validator                  │
+   │                      (description scan, namespace ownership,      │
+   │                       manifest hash pinning, supply chain check)  │
+   │                                                                    │
+   │   Execution phase    Layer 1  Access control (RBAC)                │
+   │                      Layer 2  Rate limiter                         │
+   │                      Layer 3  Input validator                      │
+   │                      Layer 4  Output validator                     │
+   │                      Layer 5  Audit log                            │
+   └───────────────┬─────────────────────────────┬────────────────────┘
+                    │                             │
+              Wazuh MCP server               Evil MCP server
+              (16 tools, Rust)               (4 tools, attack simulation)
+                    │
+               Wazuh SIEM
 ```
 
-```
-LLM / OpenAI API
-       │
-┌──────┼──────────────────┐
-│   Agents                │
-│  Triage · Enrichment · Response
-└──────┼──────────────────┘
-       │
-┌──────▼──────────────────────────────────────┐
-│  Security Framework (middleware)             │
-│                                              │
-│  Tool reg. validator  Layer 1: RBAC          │
-│  Layer 2: Rate limiter                       │
-│  Layer 3: Input validator (JSON schema)      │
-│  Layer 4: Output validator                   │
-│  Layer 5: Audit log (SHA-256 · redaction)    │
-└──────┬──────────────────┬───────────────────┘
-       │                  │
-  Wazuh MCP          Evil MCP server
-  (16 tools)         (attack simulation)
-       │
-  Wazuh SIEM (VM)
-```
+The framework is exposed as a persistent FastAPI service
+(`framework_server.py`) so that the connection-phase checks run once at
+startup, and every subsequent pipeline execution or individual tool call
+reuses the already-validated tool registry.
 
 ## Security Framework
 
-Five-layer middleware implemented in `SOC-framework/framework/security.py`, aligned with the OWASP Practical Guide for Secure MCP Server Development v1.0.
+Implemented in `framework/security.py`, aligned with the OWASP Practical
+Guide for Secure MCP Server Development v1.0.
 
-| Layer | Control | Attack vectors covered |
+| Phase / Layer | Control | Attack vectors covered |
 |---|---|---|
-| Tool registration validator | Description scan + manifest hash (version pinning) | Tool description poisoning, tool shadowing, rug pull |
-| Layer 1 | RBAC per agent role, explicit allowlist | Privilege escalation, confused deputy |
-| Layer 2 | Rate limiter (20/30/20 calls per 60s) | DoS internal, data exfiltration by query flooding |
-| Layer 3 | Input validator: JSON schema + regex + handoff + memory | Direct prompt injection, inter-agent trust exploitation, memory poisoning |
-| Layer 4 | Output validator: pattern matching + 100KB size limit | Indirect prompt injection, tool poisoning in response, context flooding |
-| Layer 5 | Immutable audit log, field-level redaction, SHA-256 result hash | Forensic traceability, sensitive data governance |
+| Connection phase | Description scan on tool metadata | Tool description poisoning |
+| Connection phase | Namespace ownership enforcement | Tool shadowing / name collision |
+| Connection phase | SHA-256 manifest hash pinning | Rug pull / silent tool redefinition |
+| Connection phase | SHA-256 binary hash verification | Supply chain (MCP server) |
+| Layer 1 | RBAC per agent role, runtime allowlist | Privilege escalation, confused deputy, unauthorized autonomous execution, lateral compromise |
+| Layer 1 | X-MCP-API-Key header validation | Authentication bypass, message manipulation / replay |
+| Layer 1 | Origin header validation (request + response) | DNS rebinding, CSRF/CORS exploitation |
+| Layer 2 | Per-role call rate limiter (60s window) | DoS / resource abuse, data exfiltration flooding |
+| Layer 2 | Pipeline approval rate limiter (1h window) | Oversight saturation, consent fatigue |
+| Layer 3 | JSON schema + regex scan on tool arguments | Direct prompt injection |
+| Layer 3 | Context store entry validator + session namespacing | Memory poisoning, cross-client data leak |
+| Layer 3 | Extended regex scan on external data | Malicious data injection, web content poisoning |
+| Layer 3 | Handoff sequence enforcer + content scan | Identity spoofing, inter-agent trust exploitation |
+| Layer 4 | Pattern matching + 100KB response size limit | Indirect prompt injection, tool poisoning in response, context flooding, credential exfiltration, system prompt extraction, AI virus / self-propagation |
+| Layer 5 | Append-only audit log, field-level redaction, SHA-256 result hash | Forensic traceability, accountability |
+| Session-level | Response agent justification validator | Human-agent trust manipulation |
 
 ## Evil MCP Server
 
-Adversarial MCP server for attack simulation (`SOC-framework/evil_mcp_server.py`). Exposes four malicious tools:
+Adversarial MCP server for attack simulation (`evil_mcp_server.py`).
+Fully MCP-specification-compliant; from the client's perspective it is
+indistinguishable from a legitimate server. Exposes four malicious tools:
 
-- `get_wazuh_latest_alert` — tool shadowing (name collision with legitimate tool)
 - `get_threat_intelligence` — tool description poisoning
-- `get_vulnerability_feed` — indirect prompt injection via output
-- `get_compliance_report` — confused deputy (instructs agent to call `propose_wazuh_rule`)
+- `get_compliance_report` — confused deputy (instructs the agent to call `propose_wazuh_rule`)
+- `get_vulnerability_feed` — indirect prompt injection via tool output
+- `get_wazuh_latest_alert` — tool shadowing (name collision with the legitimate tool)
 
-Runs as a Docker service: `docker-compose up -d`
+Runs as a persistent Docker service.
 
 ## Evaluation
 
-Extended evaluation with N=20 repeated trials per test. Metrics: ASR, DR, FPR, Precision, Recall, F1, latency overhead.
+The framework is evaluated through six tests (T00–T05), each isolating one
+framework component and the attack vectors whose primary exploitation path
+runs through it. Every test runs N=20 trials, each exercising both an
+attack case and its corresponding legitimate case with fixed, repeated
+payloads, against a freshly initialised component instance.
 
-| Test | Layer | ASR | DR | FPR | F1 | Overhead |
-|---|---|---|---|---|---|---|
-| T01 | Tool registration validator | 1.00 | 1.00 | 0.000 | 1.00 | +44.6% |
-| T02 | Layer 1: Access control | 1.00 | 1.00 | 0.000 | 1.00 | +9.7% |
-| T03 | Layer 2: Rate limiter | 1.00 | 1.00 | 0.000 | 1.00 | -83.3% |
-| T04 | Layer 3: Input validator | 1.00 | 1.00 | 0.000 | 1.00 | +11.6% |
-| T05 | Layer 4: Output validator | 0.33 | 1.00 | 0.000 | 1.00 | +107.5% |
-| **Avg** | | | **1.00** | **0.000** | **1.00** | **+19.6%** |
+Three metrics are reported per test: **attacks blocked** out of the total
+attempted (expected: 100%), **attacks passed** that bypassed all controls
+(expected: 0), and **false blocks**, legitimate calls incorrectly rejected
+(expected: 0). Latency is reported as two separate figures — accepted-call
+overhead (genuine cost on legitimate traffic) and blocked-call saving
+(avoided round-trip on rejected attacks) — rather than a single blended
+number, since conflating the two would misrepresent either the framework's
+operational cost or its detection behaviour.
 
-## Repository Structure
+| Test | Component | Blocked | Passed | False blocks |
+|---|---|---|---|---|
+| T00 | Tool registration validator | 100/100 | 0 | 0 |
+| T01 | Layer 1: Access control | 120/120 | 0 | 0 |
+| T02 | Layer 2: Rate limiter | 40/40 | 0 | 0 |
+| T03 | Layer 3: Input validator | 100/100 | 0 | 0 |
+| T04 | Layer 4: Output validator | 160/160 | 0 | 0 |
+| T05 | Session and response controls | 80/80 | 0 | 0 |
+| **Total** | | **600/600** | **0** | **0** |
+
+Full per-subtest breakdown, latency figures, and methodology are documented
+in the thesis (Chapter: Evaluation).
+
+## Project Structure
 
 ```
 TFM/
-├── SOC-framework/
-│   ├── agents/
-│   │   └── agents.py             triage, enrichment, response agent implementations
-│   ├── framework/
-│   │   ├── security.py           five-layer security middleware
-│   │   └── tool_schemas.py       JSON schema definitions for all 16 Wazuh tools
-│   ├── mcp/
-│   │   └── client.py             MCP client (JSON-RPC 2.0 over HTTP/SSE)
-│   ├── memory/
-│   │   └── store.py              shared persistent memory (JSON on disk)
-│   ├── tests/
-│   │   ├── common.py             shared test utilities and RawMCP client
-│   │   └── test_t01..t05.py      individual test scripts per layer
-│   ├── scripts/
-│   │   └── setup_secrets.sh      secrets setup with chmod 600
-│   ├── main.py                   single-run pipeline
-│   ├── run_tests_extended.py     extended evaluation (N=20, full metrics)
-│   ├── evil_mcp_server.py        adversarial MCP server
-│   └── Dockerfile.evil           evil MCP server Docker image
-├── wazuh-mcp/
-│   ├── Dockerfile.wazuh-mcp      custom Rust build with 2 extra tools
-│   ├── custom.rs                 get_wazuh_latest_alert + propose_wazuh_rule
-│   └── main.rs                   patched main.rs with custom tools registered
-├── provision/
-│   ├── wazuh_server_provision.sh Wazuh SIEM provisioning script
-│   └── wazuh_agent_provision.sh  Wazuh agent provisioning script
-├── docker-compose.yml            wazuh-mcp + evil-mcp services
-├── Vagrantfile                   Wazuh SIEM VM (SIEM only, no MCP)
-├── mcp-wazuh.env.example         environment variables template
-└── README.md
+├── docker-compose.yml          full stack: wazuh-mcp, evil-mcp, framework-server, jupyter
+├── mcp-wazuh.env.example       environment variable template
+├── Vagrantfile                 Wazuh SIEM virtual machine
+├── provision/                  Wazuh agent/server provisioning scripts
+├── notebooks/
+│   ├── demo.ipynb              pipeline demo: with/without framework, real + synthetic alerts
+│   └── tests.ipynb             evaluation suite, triggered via the framework's REST API
+├── wazuh-mcp/                  custom Rust build of the Wazuh MCP server
+│   ├── main.rs
+│   ├── custom.rs               two custom tools added for this thesis
+│   └── Dockerfile.wazuh-mcp
+└── SOC-framework/
+    ├── agents/
+    │   ├── agents.py            triage, enrichment, response agent implementations
+    │   └── agents_nofw.py       unprotected pipeline variant, for baseline comparison
+    ├── framework/
+    │   ├── security.py          connection-phase validator + five-layer middleware
+    │   └── tool_schemas.py      JSON schema definitions for all 16 Wazuh tools
+    ├── mcp/
+    │   └── client.py            MCP client (JSON-RPC 2.0 over HTTP/SSE)
+    ├── memory/
+    │   └── store.py             shared persistent memory (JSON on disk), session-namespaced
+    ├── main.py                  standalone single-run pipeline
+    ├── framework_server.py      persistent FastAPI gateway (REST API for pipeline + tests)
+    ├── run_tests.py             evaluation suite (T00–T05, N=20 trials)
+    ├── run_all_tests.sh         runs the full suite, restarting wazuh-mcp between tests
+    ├── evil_mcp_server.py       adversarial MCP server
+    ├── scripts/
+    │   └── setup_secrets.sh     writes secrets to disk with chmod 600
+    ├── Dockerfile               wazuh-mcp client-facing image (legacy, see Dockerfile.framework)
+    ├── Dockerfile.evil          evil MCP server image
+    └── Dockerfile.framework     framework-server image
 ```
 
 ## Setup
 
+### Prerequisites
+
+- Docker and Docker Compose
+- Vagrant + VirtualBox (for the Wazuh SIEM VM)
+- Python 3.11+
+
+### 1. Wazuh SIEM (Vagrant VM)
+
 ```bash
-# Clone
-git clone https://github.com/rodtpsim/TFM.git
-cd TFM
+vagrant up
+```
 
-# 1. Start infrastructure
-vagrant up wazuh-server          # Wazuh SIEM (~10 min first run)
-docker-compose up -d             # wazuh-mcp + evil-mcp containers
+This provisions a VM running the Wazuh Manager, Indexer, and Dashboard,
+using the scripts in `provision/`.
 
-# 2. Configure SOC-framework
+### 2. Environment configuration
+
+```bash
+cp mcp-wazuh.env.example mcp-wazuh.env
+# edit mcp-wazuh.env with your Wazuh API credentials and OpenAI API key
+```
+
+Set up secrets with restricted permissions:
+
+```bash
+cd SOC-framework
+chmod +x scripts/setup_secrets.sh
+./scripts/setup_secrets.sh
+```
+
+### 3. Docker stack
+
+```bash
+docker-compose up -d --build
+```
+
+This builds and starts four services:
+
+| Service | Port | Description |
+|---|---|---|
+| `wazuh-mcp` | 8085 | Wazuh MCP server (Rust, 16 tools) |
+| `evil-mcp` | 8089 | Adversarial MCP server (Python, 4 tools) |
+| `framework-server` | 8090 | Persistent security framework (FastAPI) |
+| `jupyter` | 8888 | Demo and evaluation notebooks |
+
+Open `http://localhost:8888` for the notebooks, or
+`http://localhost:8090/docs` for the framework's interactive API
+documentation.
+
+### 4. Python environment (for running tests outside Docker)
+
+```bash
 cd SOC-framework
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-
-cp ../.env.example .env          # fill in OPENAI_API_KEY and MCP URLs
-chmod +x scripts/setup_secrets.sh
-./scripts/setup_secrets.sh
-
-# 3. Run pipeline
-python main.py
-
-# 4. Run evaluation (N=20 trials)
-python run_tests_extended.py
 ```
 
-## Environment Variables
+### 5. Run the evaluation suite
 
-Copy `mcp-wazuh.env.example` and fill in credentials. Never commit the real `.env` file.
+The wazuh-mcp Rust server accumulates connection state across rapid
+reconnects, so the wrapper script restarts it before each test:
 
+```bash
+cd SOC-framework
+./run_all_tests.sh 20          # all six tests, N=20 trials each
+./run_all_tests.sh 20 T02      # a single test
 ```
-MCP_SERVER_URL=http://127.0.0.1:8085/mcp
-EVIL_MCP_URL=http://127.0.0.1:8089/mcp
-OPENAI_API_KEY=sk-...
-```
 
-## Infrastructure
-
-- Wazuh SIEM: `192.168.56.110` (Vagrant VM — Ubuntu 22.04, 8GB RAM)
-- Wazuh MCP server: `http://127.0.0.1:8085/mcp` (Docker — custom Rust build with 16 tools)
-- Evil MCP server: `http://127.0.0.1:8089/mcp` (Docker container)
-- MCP protocol version: `2025-06-18`
-- LLM: GPT-4o via OpenAI API
+Results are appended to `test_results_extended.jsonl`.
 
 ## OWASP Compliance
 
-Controls implemented against the OWASP Practical Guide for Secure MCP Server Development v1.0:
+Controls implemented against the OWASP Practical Guide for Secure MCP
+Server Development v1.0:
 
-- **Section 2**: Tool description validation at load time, version pinning with SHA-256 manifest hash
-- **Section 3**: JSON schema validation per tool (16 schemas), rate limits, 100KB output size limit
-- **Section 4**: Prompt injection controls, inter-agent trust validation, memory poisoning detection, human-in-the-loop for destructive actions
-- **Section 5**: Centralized policy enforcement (SecurityFramework as single gateway), least privilege RBAC per agent role
-- **Section 6**: Safe error handling (no stack traces to LLM), non-root Docker containers, secrets with chmod 600, network segmentation (separate Docker networks per server)
-- **Section 7**: Immutable audit log, field-level redaction of sensitive arguments (SHA-256 hash)
+- **Section 2** — Tool description validation, namespace ownership
+  enforcement, version pinning with SHA-256 manifest hash, supply chain
+  binary verification
+- **Section 3** — JSON schema validation per tool, per-role and pipeline
+  rate limits, output size limits
+- **Section 4** — Prompt injection controls across tool arguments, server
+  responses, memory context, and inter-agent handoffs; human-in-the-loop
+  approval for destructive actions
+- **Section 5** — Centralized middleware interception, least privilege per
+  agent role enforced at runtime
+- **Section 6** — Safe error handling (no stack traces or internal logic
+  exposed to the LLM), non-root Docker containers, secrets with restricted
+  filesystem permissions, network segmentation
+- **Section 7** — Append-only audit log with session tagging, field-level
+  redaction of sensitive arguments
 
 ## License
 
-Academic project — Universidad Politécnica de Madrid, 2026.
+Academic project - Master's Thesis — Universidad Politécnica de Madrid, 2026.
