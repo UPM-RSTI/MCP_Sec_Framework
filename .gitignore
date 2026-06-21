@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+venv/
+.venv/
+env/
+
+# Environment secrets
+.env
+*.env
+!*.env.example
+
+# Memory / runtime data
+memory_data/
+memory_data_nofw/
+
+# Logs and results
+*.log
+demo_analysis.txt
+test_results_extended.jsonl
+
+# Vagrant
+.vagrant/
+
+# Docker
+*.pid
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Shared/scratch
+shared/
+
+# Legacy unit tests (kept locally, not part of the submitted pipeline)
+SOC-framework/tests/
+SOC-framework/test_results.jsonl

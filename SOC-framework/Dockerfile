@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir fastapi uvicorn[standard]
+
+# Copy framework source
+COPY . .
+
+# Memory data directory
+RUN mkdir -p /data/memory
+
+EXPOSE 8090
+
+CMD ["python", "framework_server.py"]

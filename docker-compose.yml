@@ -1,0 +1,153 @@
+version: "3.9"
+
+# ── Architecture ──────────────────────────────────────────────────────────────
+#
+#   labserver05 (host)
+#   ├── wazuh-mcp         Docker → port 8085  (Rust, 16 tools)
+#   ├── evil-mcp          Docker → port 8089  (Python, 4 malicious tools)
+#   ├── framework-server  Docker → port 8090  (FastAPI, persistent SecurityFramework)
+#   └── jupyter           Docker → port 8888  (notebooks: demo + tests)
+#
+#   wazuh-server (Vagrant VM)
+#   └── Wazuh SIEM docker-compose → ports 443/55000/9200 (IP: 192.168.56.110)
+#
+# Usage:
+#   vagrant up
+#   docker-compose up -d
+#   open http://localhost:8888  (Jupyter)
+#   open http://localhost:8090/docs  (Framework API)
+
+networks:
+  soc_wazuh:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+  soc_evil:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+
+  soc_framework:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.32.0.0/24
+
+services:
+
+  # ── Wazuh MCP server ────────────────────────────────────────────────────────
+  wazuh-mcp:
+    build:
+      context: ./wazuh-mcp
+      dockerfile: Dockerfile.wazuh-mcp
+    image: wazuh-mcp:latest
+    container_name: wazuh-mcp
+    networks:
+      - soc_wazuh
+      - soc_framework
+    ports:
+      - "127.0.0.1:8085:8080"
+    environment:
+      WAZUH_API_HOST:         "192.168.56.110"
+      WAZUH_API_PORT:         "55000"
+      WAZUH_API_USERNAME:     "wazuh-wui"
+      WAZUH_API_PASSWORD:     "${WAZUH_API_PASSWORD}"
+      WAZUH_INDEXER_HOST:     "192.168.56.110"
+      WAZUH_INDEXER_PORT:     "9200"
+      WAZUH_INDEXER_USERNAME: "admin"
+      WAZUH_INDEXER_PASSWORD: "${WAZUH_INDEXER_PASSWORD}"
+      WAZUH_VERIFY_SSL:       "false"
+      WAZUH_TEST_PROTOCOL:    "https"
+      RUST_LOG:               "info"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "256M"
+
+  # ── Evil MCP server ─────────────────────────────────────────────────────────
+  evil-mcp:
+    build:
+      context: ./SOC-framework
+      dockerfile: Dockerfile.evil
+    image: evil-mcp:latest
+    container_name: evil-mcp
+    networks:
+      - soc_evil
+      - soc_framework
+    ports:
+      - "127.0.0.1:8089:8089"
+    restart: unless-stopped
+
+  # ── Framework server (persistent SecurityFramework) ─────────────────────────
+  framework-server:
+    build:
+      context: ./SOC-framework
+      dockerfile: Dockerfile.framework
+    image: framework-server:latest
+    container_name: framework-server
+    networks:
+      - soc_wazuh
+      - soc_evil
+      - soc_framework
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      MCP_SERVER_URL:              "http://wazuh-mcp:8080/mcp"
+      EVIL_MCP_URL:                "http://evil-mcp:8089/mcp"
+      OPENAI_API_KEY:              "${OPENAI_API_KEY}"
+      OPENAI_MODEL:                "${OPENAI_MODEL:-gpt-4o-mini}"
+      MCP_API_KEY:                 "${MCP_API_KEY}"
+      MCP_ALLOWED_ORIGIN:          ""
+      WAZUH_MCP_BINARY_HASH:       "${WAZUH_MCP_BINARY_HASH}"
+      WAZUH_MCP_BINARY_HASH_ACTUAL: "${WAZUH_MCP_BINARY_HASH_ACTUAL}"
+      MEMORY_DIR:                  "/data/memory"
+      LOG_LEVEL:                   "INFO"
+    volumes:
+      - framework_memory:/data/memory
+    depends_on:
+      - wazuh-mcp
+      - evil-mcp
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Jupyter Lab ─────────────────────────────────────────────────────────────
+  jupyter:
+    image: jupyter/scipy-notebook:latest
+    container_name: jupyter
+    networks:
+      - soc_framework
+    ports:
+      - "127.0.0.1:8888:8888"
+    environment:
+      JUPYTER_ENABLE_LAB:    "yes"
+      FRAMEWORK_SERVER_URL:  "http://framework-server:8090"
+      NB_USER:               "rodrigo"
+      CHOWN_HOME:            "yes"
+    volumes:
+      - ./notebooks:/home/rodrigo/work
+      - framework_memory:/data/memory:ro
+    depends_on:
+      - framework-server
+    restart: unless-stopped
+    command: >
+      start-notebook.sh
+      --NotebookApp.token=''
+      --NotebookApp.password=''
+      --NotebookApp.notebook_dir='/home/rodrigo/work'
+
+volumes:
+  framework_memory:
+    driver: local

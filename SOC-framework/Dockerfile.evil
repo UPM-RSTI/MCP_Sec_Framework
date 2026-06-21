@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY evil_mcp_server.py .
+COPY mcp/ mcp/
+
+EXPOSE 8089
+
+CMD ["python", "evil_mcp_server.py", "--port", "8089"]

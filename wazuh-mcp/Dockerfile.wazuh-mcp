@@ -1,0 +1,37 @@
+FROM rust:1.86-slim AS builder
+
+WORKDIR /usr/src/app
+
+RUN apt-get update && \
+    apt-get install -y pkg-config libssl-dev build-essential perl make git && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/gbrigandi/mcp-server-wazuh.git .
+
+# Inject custom tools module
+COPY custom.rs src/tools/custom.rs
+
+# Register custom module in mod.rs
+RUN sed -i 's/^pub mod vulnerabilities;/pub mod vulnerabilities;\npub mod custom;/' src/tools/mod.rs
+
+# Replace main.rs with patched version (includes custom tools)
+COPY main.rs src/main.rs
+
+RUN cargo build --release --features http
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /usr/src/app/target/release/mcp-server-wazuh /app/mcp-server-wazuh
+
+RUN useradd -m wazuh
+USER wazuh
+
+EXPOSE 8080
+
+CMD ["./mcp-server-wazuh", "--transport", "http", "--host", "0.0.0.0", "--port", "8080"]
