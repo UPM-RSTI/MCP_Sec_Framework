@@ -162,10 +162,33 @@ TFM/
 
 ## Setup
 
+### Quick start
+
+```bash
+git clone https://github.com/rodtpsim/TFM.git && cd TFM
+cp mcp-wazuh.env.example .env
+# edit .env: set OPENAI_API_KEY=sk-...
+vagrant up --provider=virtualbox
+docker-compose up -d --build
+cd SOC-framework && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+./run_all_tests.sh 20
+```
+
+The only value you need to change before running is `OPENAI_API_KEY` in
+`.env`. All Wazuh credentials and the MCP shared secret are pre-filled
+with the defaults from `wazuh/wazuh-docker v4.14.0`.
+
+> **Note — VirtualBox required.** The Vagrantfile uses the `virtualbox`
+> provider. On machines where VMware is the default Vagrant provider,
+> pass `--provider=virtualbox` explicitly as shown above. VirtualBox 6.x
+> or later must be installed (`sudo apt install virtualbox` on Ubuntu).
+
+---
+
 ### Prerequisites
 
 - Docker and Docker Compose
-- Vagrant + VirtualBox (for the Wazuh SIEM VM)
+- Vagrant + VirtualBox 6.x or later
 - Python 3.11+
 
 ### 1. Clone and configure
@@ -190,7 +213,7 @@ multi-node and work out of the box with the provisioned VM.
 ### 2. Start the Wazuh SIEM (Vagrant VM)
 
 ```bash
-vagrant up
+vagrant up --provider=virtualbox
 ```
 
 This provisions an Ubuntu 22.04 VM that runs the full Wazuh stack
