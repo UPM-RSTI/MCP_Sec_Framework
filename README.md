@@ -168,37 +168,43 @@ TFM/
 - Vagrant + VirtualBox (for the Wazuh SIEM VM)
 - Python 3.11+
 
-### 1. Wazuh SIEM (Vagrant VM)
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/rodtpsim/TFM.git
+cd TFM
+cp mcp-wazuh.env.example .env
+```
+
+Open `.env` and set your OpenAI API key — this is the **only value you
+need to change**:
+
+```
+OPENAI_API_KEY=sk-...
+```
+
+All other values (Wazuh credentials, MCP key, Indexer credentials) are
+pre-filled with the defaults shipped by `wazuh/wazuh-docker v4.14.0`
+multi-node and work out of the box with the provisioned VM.
+
+### 2. Start the Wazuh SIEM (Vagrant VM)
 
 ```bash
 vagrant up
 ```
 
-This provisions a VM running the Wazuh Manager, Indexer, and Dashboard,
-using the scripts in `provision/`.
+This provisions an Ubuntu 22.04 VM that runs the full Wazuh stack
+(Manager, Indexer, Dashboard) via Docker Compose inside the VM. The VM
+is assigned IP `192.168.56.110` on a host-only network. First boot takes
+several minutes while Docker images are pulled and Wazuh initialises.
 
-### 2. Environment configuration
-
-```bash
-cp mcp-wazuh.env.example mcp-wazuh.env
-# edit mcp-wazuh.env with your Wazuh API credentials and OpenAI API key
-```
-
-Set up secrets with restricted permissions:
-
-```bash
-cd SOC-framework
-chmod +x scripts/setup_secrets.sh
-./scripts/setup_secrets.sh
-```
-
-### 3. Docker stack
+### 3. Start the Docker stack (host)
 
 ```bash
 docker-compose up -d --build
 ```
 
-This builds and starts four services:
+This builds and starts four services on the host:
 
 | Service | Port | Description |
 |---|---|---|
@@ -208,10 +214,9 @@ This builds and starts four services:
 | `jupyter` | 8888 | Demo and evaluation notebooks |
 
 Open `http://localhost:8888` for the notebooks, or
-`http://localhost:8090/docs` for the framework's interactive API
-documentation.
+`http://localhost:8090/docs` for the framework's interactive API.
 
-### 4. Python environment (for running tests outside Docker)
+### 4. Python environment (for running tests from the host)
 
 ```bash
 cd SOC-framework
@@ -222,16 +227,16 @@ pip install -r requirements.txt
 
 ### 5. Run the evaluation suite
 
-The wazuh-mcp Rust server accumulates connection state across rapid
-reconnects, so the wrapper script restarts it before each test:
-
 ```bash
 cd SOC-framework
 ./run_all_tests.sh 20          # all six tests, N=20 trials each
 ./run_all_tests.sh 20 T02      # a single test
 ```
 
-Results are appended to `test_results_extended.jsonl`.
+The wrapper script restarts the `wazuh-mcp` container before each test,
+which is necessary because the Rust server accumulates connection state
+across rapid reconnects and becomes unstable otherwise. Results are
+appended to `test_results_extended.jsonl`.
 
 ## OWASP Compliance
 
@@ -256,4 +261,4 @@ Server Development v1.0:
 
 ## License
 
-Academic project - Master's Thesis — Universidad Politécnica de Madrid, 2026.
+Academic project — Universidad Politécnica de Madrid, 2026.
