@@ -1,6 +1,6 @@
-# TFM — Security Framework for MCP-based Multi-Agent Systems in SOC Environments
+# Security Framework for MCP-based Multi-Agent Systems in SOC Environments
 
-Master's thesis implementation — Universidad Politécnica de Madrid, 2026.
+Master's thesis implementation - Universidad Politécnica de Madrid, 2026.
 Cybersecurity · Agentic AI · SOC automation.
 
 ## Overview
