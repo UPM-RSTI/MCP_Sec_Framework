@@ -30,19 +30,19 @@ on paper.
               │     Triage · Enrichment · Response        │
               └─────────────────────┼─────────────────────┘
                                     │
-   ┌────────────────────────────────▼───────────────────────────────────┐
-   │                  Security Framework (middleware)                   │
-   │                                                                    │
-   │   Connection phase   Tool registration validator                   │
-   │                      (description scan, namespace ownership,       │
-   │                       manifest hash pinning, supply chain check)   │
-   │                                                                    │
-   │   Execution phase    Layer 1  Access control (RBAC)                │
-   │                      Layer 2  Rate limiter                         │
-   │                      Layer 3  Input validator                      │
-   │                      Layer 4  Output validator                     │
-   │                      Layer 5  Audit log                            │
-   └────────────────┬─────────────────────────────┬─────────────────────┘
+   ┌────────────────────────────────▼─────────────────────────────────┐
+   │                  Security Framework (middleware)                 │
+   │                                                                  │
+   │   Connection phase   Tool registration validator                 │
+   │                      (description scan, namespace ownership,     │
+   │                       manifest hash pinning, supply chain check) │
+   │                                                                  │
+   │   Execution phase    Layer 1  Access control (RBAC)              │
+   │                      Layer 2  Rate limiter                       │
+   │                      Layer 3  Input validator                    │
+   │                      Layer 4  Output validator                   │
+   │                      Layer 5  Audit log                          │
+   └────────────────┬─────────────────────────────┬───────────────────┘
                     │                             │
               Wazuh MCP server               Evil MCP server
               (16 tools, Rust)               (4 tools, attack simulation)
