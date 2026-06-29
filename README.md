@@ -125,7 +125,7 @@ in the thesis (Chapter: Evaluation).
 ## Project Structure
 
 ```
-TFM/
+MCP_Sec_Framework/
 ├── docker-compose.yml          full stack: wazuh-mcp, evil-mcp, framework-server, jupyter
 ├── mcp-wazuh.env.example       environment variable template
 ├── Vagrantfile                 Wazuh SIEM virtual machine
@@ -165,7 +165,7 @@ TFM/
 ### Quick start
 
 ```bash
-git clone https://github.com/UPM-RSTI/MCP_Sec_Framework.git && cd TFM
+git clone https://github.com/UPM-RSTI/MCP_Sec_Framework.git && cd MCP_Sec_Framework
 cp mcp-wazuh.env.example .env
 # edit .env: set OPENAI_API_KEY=sk-...
 vagrant up --provider=virtualbox
@@ -195,7 +195,7 @@ with the defaults from `wazuh/wazuh-docker v4.14.0`.
 
 ```bash
 git clone https://github.com/UPM-RSTI/MCP_Sec_Framework.git
-cd TFM
+cd MCP_Sec_Framework
 cp mcp-wazuh.env.example .env
 ```
 
