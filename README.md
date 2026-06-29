@@ -92,36 +92,6 @@ indistinguishable from a legitimate server. Exposes four malicious tools:
 
 Runs as a persistent Docker service.
 
-## Evaluation
-
-The framework is evaluated through six tests (T00–T05), each isolating one
-framework component and the attack vectors whose primary exploitation path
-runs through it. Every test runs N=20 trials, each exercising both an
-attack case and its corresponding legitimate case with fixed, repeated
-payloads, against a freshly initialised component instance.
-
-Three metrics are reported per test: **attacks blocked** out of the total
-attempted (expected: 100%), **attacks passed** that bypassed all controls
-(expected: 0), and **false blocks**, legitimate calls incorrectly rejected
-(expected: 0). Latency is reported as two separate figures — accepted-call
-overhead (genuine cost on legitimate traffic) and blocked-call saving
-(avoided round-trip on rejected attacks) — rather than a single blended
-number, since conflating the two would misrepresent either the framework's
-operational cost or its detection behaviour.
-
-| Test | Component | Blocked | Passed | False blocks |
-|---|---|---|---|---|
-| T00 | Tool registration validator | 100/100 | 0 | 0 |
-| T01 | Layer 1: Access control | 120/120 | 0 | 0 |
-| T02 | Layer 2: Rate limiter | 40/40 | 0 | 0 |
-| T03 | Layer 3: Input validator | 100/100 | 0 | 0 |
-| T04 | Layer 4: Output validator | 160/160 | 0 | 0 |
-| T05 | Session and response controls | 80/80 | 0 | 0 |
-| **Total** | | **600/600** | **0** | **0** |
-
-Full per-subtest breakdown, latency figures, and methodology are documented
-in the thesis (Chapter: Evaluation).
-
 ## Project Structure
 
 ```
