@@ -165,7 +165,7 @@ TFM/
 ### Quick start
 
 ```bash
-git clone https://github.com/rodtpsim/TFM.git && cd TFM
+git clone https://github.com/UPM-RSTI/MCP_Sec_Framework.git && cd TFM
 cp mcp-wazuh.env.example .env
 # edit .env: set OPENAI_API_KEY=sk-...
 vagrant up --provider=virtualbox
@@ -194,7 +194,7 @@ with the defaults from `wazuh/wazuh-docker v4.14.0`.
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/rodtpsim/TFM.git
+git clone https://github.com/UPM-RSTI/MCP_Sec_Framework.git
 cd TFM
 cp mcp-wazuh.env.example .env
 ```
